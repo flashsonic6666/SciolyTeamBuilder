@@ -1,0 +1,304 @@
+### importing the required module 
+from ortools.linear_solver import pywraplp
+from ortools.sat.python import cp_model
+from collections import defaultdict
+import matplotlib.pyplot as plt 
+import math
+import random
+import gspread
+import time
+
+#sa = gspread.service_account()
+#sh = sa.open("More Top Secret Spreadsheet")
+
+#wks = sh.worksheet("Linear Programming Team Building")
+
+#Stuff for testing to make sure everthing is working
+#print('Rows: ', wks.row_count)
+#print('Cols: ', wks.col_count)
+#print(wks.cell(5,1).value) #y-axis first var (row num), x-axis second (col num)
+#wks.update('J6','in love?')
+
+#variables
+#n is number of members, m number of events (total, including trial, drops included)
+n=15
+m=28
+
+#drop events
+drop=[]
+for i in range(m):
+    drop.append(1)
+    #if(i==2 or i==10 or i==22 or i==25 or i==26): #Bridge, XD, WIDI, Picture This, Solar
+        #drop.append(0)
+    #else:
+        #drop.append(1)
+
+#change to num of drop events
+numdrop=0
+    
+#forgot what these are called variables
+#relative standings of ppl for each event, z_{x,y} where x identifies person, y identifies event
+z=[]
+for i in range(n):
+    z.append([])
+    for j in range(m):
+        z[i].append(-10000)
+
+listOfEvents=["Anatomy and Physiology", #0
+              "Astronomy", #1
+              "Bridge", #2
+              "Cell Biology", #3
+              "Chemistry Lab", #4
+              "Codebusters", #5
+              "Detector Building", #6
+              "Disease Detectives", #7
+              "Dynamic Planet", #8
+              "Enviromental Chemistry", #9
+              "Experimental Design", #10
+              "Fermi Questions", #11
+              "Flight", #12
+              "Forensics", #13
+              "Forestry", #14
+              "Green Generation", #15
+              "It's About Time", #16
+              "Remote Sensing", #17
+              "Rocks and Minerals", #18
+              "Scrambler", #19
+              "Trajectory", #20
+              "Wi-Fi Lab", #21
+              "Write It Do It", #22
+              "Botany", #23
+              "Cybersecurity", #24
+              "Picture This", #25
+              "Solar Power", #26
+              "We Got Your Number" #27
+             ]
+
+listOfPeople=["Nicole", #0
+              "Anisha", #1
+              "Sriram", #2
+              "Aaryan", #3
+              "Yuxiang", #4
+              "Jerry", #5
+              "Om", #6
+              "Baryan", #7
+              "Evan", #8
+              "Alan", #9
+              "Rich", #10
+              "Anne", #11
+              "Adwhita", #12
+              "Isabella", #13
+              "Jessica" #14
+             ]
+
+#ADDS NUANCE (people, then rating / 10)
+#ex. first row is [1,0,7,2],[7,6,5,5]
+#this indicates person in position 1 of listOfPeople (Anisha) has rating 7
+#similarly, person 0 (Nicole) has rating 6
+# And then Baryan, Sriram have rating 5
+nuance=[
+   [[1,0,7,2],[7,6,5,5]], #A&P (0)
+   [[3,8,2,4],[5,4,3,2]], #Astro (1)
+   [[5],[10]], #Bridge (2)
+   [[7,1,0,2,13],[8,7,5,5,3]], #Cell Bio (3)
+   [[8,9,7,2,14],[7,6,4,3,3]], #Chem Lab (4)
+   [[10,9,11,7,3,2],[10,9,9,6,6,5]], #Codebusters (5)
+   [[8,6,2,7],[8,7,4,4]], #Detector Building (6)
+   [[0,12,13],[6,5,4]], #Disease Detectives (7),
+   [[2,8,13,7,4],[7,5,4,4,3]], #DP (8)
+   [[9,8,14],[8,7,4]], #Env Chem (9)
+   [[12,2,3,7,8],[6,4,4,4,4]], #XD (10)
+   [[7,10,3,2],[8,6,4,4]], #Fermi (11)
+   [[5],[10]], #Flight (12)
+   [[14,12,13,9],[6,6,5,4]], #Forensics (13)
+   [[13,4],[7,6]], #Mickey Mouse (14)
+   [[13,1,0],[6,5,4]], #GG (15)
+   [[7,3,10],[8,8,7]], #IAT (16)
+   [[2,10,8],[8,5,4]], #Remote Sensing (17)
+   [[5,4],[7,7]], #Mickey Mouse 2 (18)
+   [[6,5],[9,9]], #Scrambler (19)
+   [[6],[10]], #Trajectory (20)
+   [[10,2],[8,8]], #WiFi Lab (21)
+   [[11,14,9],[4,4,4]], #WIDI (22)
+   [[1,0,7,13,2],[7,7,7,6,5]], #Botany (23)
+   [[10,11,7],[9,8,7]], #Cyber (24)
+   [[8,7,9,10,0,1,14,13],[9,8,9,9,4,5,9,8]], #Picture This (25)
+   [[9,14,8,4],[5,4,4,3]], #Solar Power (26)
+   [[11,3,10,2,7],[10,10,9,6,6]] #WGYN (27)
+   ]
+
+#Blocks
+   
+#Nats blocking
+#blocks=[
+#    [0,11,13,18],
+#    [1,5,14],
+#    [3,9,10],
+#    [4,7,21],
+#    [6,8,15],
+#    [16,17,22],
+#    [2,12,19,20], #ESUS
+#    [23,24,25,26,27] #ESUS
+#   ]
+
+#esus=[6,7]
+
+#My predicted states blocking
+blocks=[
+    [2,12,16,19,20,21],
+    [5,10,14,27],
+    [3,7,13,17],
+    [4,8,22,26],
+    [0,1,9,24,25],
+    [6,11,23],
+    [15,18]
+]
+
+esus=[0]
+
+count1=0     
+for j in range(m):
+    if drop[j]==0:
+        count1+=1
+        continue
+    k=len(nuance[j][0])
+    for i in range(k):
+        name=listOfPeople[nuance[j][0][i]]
+        z[nuance[j][0][i]][j]=nuance[j][1][i]
+        
+def main():
+    # Solver
+    solver = pywraplp.Solver.CreateSolver('SCIP')
+
+    # Variables
+    
+    # a is WHICH PEOPLE ARE ON THE TEAM, size n
+    # a[i] is an array of 0-1 variables, which will be 1 if person i is chosen for the team
+    # Size of a is n
+    
+    a={}
+    for i in range(n):
+        a[i] = solver.IntVar(0, 1, '')
+    
+    # b is WHICH EVENTS for each person, size n x m
+    # b[i, j] is an array of 0-1 variables, which will be 1 if person i is chosen for event j
+    # Size of b is n x m
+    
+    b = {}
+    for i in range(n):
+        for j in range(m-numdrop):
+            b[i,j] = solver.IntVar(0, 1, '')
+    
+    # Constraints
+    
+    # 15 people per team
+    # b_{i,j}<=a_i
+    
+    for i in range(n):
+        for j in range(m-numdrop):
+            solver.Add(b[i,j] <= a[i])
+            
+    solver.Add(solver.Sum(a[i] for i in range(n)) <= 15)
+    
+    # 2 members/event
+    # sum_(b_{i,y}>=2 or 3)
+    # currently just assuming all events have 2 ppl to test if this works
+    for j in range(m-numdrop):
+        if j==5 or j==10 or j==2 or j==12 or j==20:
+            continue
+        solver.Add(solver.Sum(b[i,j] for i in range(n)) <= 2)
+        
+    solver.Add(solver.Sum(b[i,5] for i in range(n)) <= 3) #Code 3 ppl
+    solver.Add(solver.Sum(b[i,10] for i in range(n)) <= 3) #Code 3 ppl
+    solver.Add(solver.Sum(b[i,2] for i in range(n)) <= 1) #Bridge Jerry solo carries
+    solver.Add(solver.Sum(b[i,12] for i in range(n)) <= 1) #Flight Jerry solo carries
+    solver.Add(solver.Sum(b[i,20] for i in range(n)) <= 1) #Traject Om solo carries
+    
+   #No blocking issues
+    for i in range(n):
+        for k in range(len(blocks)):
+            esusContinue=False
+            for p in range(len(esus)):
+                if esus[p]==k:
+                    esusContinue=True
+            if esusContinue:
+                continue
+            for x in range(len(blocks[k])):
+                for y in range(len(blocks[k])):
+                    if x>=y:
+                        continue
+                    solver.Add(b[i,blocks[k][x]]+b[i,blocks[k][y]]<=1)
+   
+    #Restricting at least 2 events per person
+    #for i in range(n):
+        #solver.Add(solver.Sum(b[i,j] for j in range(m-numdrop))>=1.5*a[i])
+    
+    # Objective Function (See pic in spreadsheet)
+    objective_terms = []
+    for i in range(n):
+        summ=0
+        for j in range(m-numdrop):
+            summ+=b[i,j]*z[i][j];
+        objective_terms.append(summ)
+    solver.Maximize(solver.Sum(objective_terms))
+
+    # Solve
+    status = solver.Solve()
+    
+    #Thing for printing
+    count=[]
+    for i in range(m):
+        count.append(0)
+    
+    # Print solution.
+    if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
+        print("Event                        People                     Relative Strength Index (RSSI)")
+        print()
+        summ=0
+        blockNum=1
+        eventCount=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+        for x in range(len(blocks)):
+            isEsus=False
+            for p in range(len(esus)):
+                if esus[p]==x:
+                    isEsus=True
+            if isEsus:
+                print("BLOCK DIRECTLY BELOW THIS MESSAGE IS ESUS SO WE IGNORE BLOCK CONFLICTS")
+            else:
+                print("Block",blockNum)
+                blockNum+=1
+            for y in range(len(blocks[x])):
+                j=blocks[x][y]
+                names=[]
+                score=0
+                for i in range(n):
+                    if b[i,j].solution_value()>0.5:
+                        names.append(listOfPeople[i])
+                        score+=z[i][j]
+                        eventCount[i]+=1
+
+                eventName=listOfEvents[j]
+                nameList="["
+                for k in range(len(names)):
+                    nameList+=names[k]
+                    if k!=len(names)-1:
+                        nameList+=', '
+                nameList+="]"
+
+                while(len(eventName)<=26):
+                    eventName+=" "
+                while(len(nameList)<=26):
+                    nameList+=" "
+                print(eventName,nameList,round(100*score/len(names))/100)
+                summ+=score/len(names)
+                
+            print()
+            
+        #print('Strength of team out of max 280 = ', solver.Objective().Value(), '\n')
+        print('Strength of team:', summ, 'out of max', (m-numdrop)*10, '(',round(100*100*summ/((m-numdrop)*10))/100,'percent )')
+        print()
+        print("Event Count")
+        for i in range(n):
+            print(listOfPeople[i],"-",eventCount[i])    
+if __name__ == '__main__':
+    main()
